@@ -1,29 +1,23 @@
 version: '3.8'
 
 services:
-  mysql:
+  db:
     image: mysql:5.7
-    container_name: mysql
+    restart: always
     environment:
-      MYSQL_DATABASE: 'mydatabase'
-      MYSQL_USER: 'username'
-      MYSQL_PASSWORD: 'password'
-      MYSQL_ROOT_PASSWORD: 'rootpassword'
-    ports:
-      - '3306:3306'
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test_db
     volumes:
-      - mysql-data:/var/lib/mysql
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    ports:
+      - "3307:3306"  # Changed the host port to 3307
 
   web:
     build: .
-    container_name: flask-app
+    command: python app.py
+    volumes:
+      - .:/app
     ports:
-      - '5000:5000'
+      - "5000:5000"
     depends_on:
-      - mysql
-    environment:
-      - FLASK_ENV=development
-      - DATABASE_URI=mysql://username:password@mysql:3306/mydatabase
-
-volumes:
-  mysql-data:
+      - db

@@ -1,69 +1,39 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.exc import SQLAlchemyError
+from flask import Flask, jsonify, request
+import mysql.connector
 
 app = Flask(__name__)
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://username:password@mysql:3306/mydatabase'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Database connection
+def get_db_connection():
+    return mysql.connector.connect(
+        host="db",  # service name defined in docker-compose.yml
+        port=3306,  # MySQL service port
+        user="root",
+        password="root",
+        database="test_db"
+    )
 
-db = SQLAlchemy(app)
+@app.route('/users', methods=['GET'])
+def get_users():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM users')
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(users)
 
-class Book(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(80), nullable=False)
-    author = db.Column(db.String(80), nullable=False)
-
-    # convert into a dictionary type
-    def to_dict(self):
-        return {"id": self.id, "title": self.title, "author": self.author}
-
-@app.route('/books', methods=['GET'])
-def get_books():
-    books = Book.query.all()
-    return jsonify([book.to_dict() for book in books])
-
-@app.route('/books/<int:book_id>', methods=['GET'])
-def get_book(book_id):
-    book = Book.query.get_or_404(book_id)
-    return jsonify(book.to_dict())
-
-@app.route('/books', methods=['POST'])
-def create_book():
-    data = request.get_json()
-    new_book = Book(title=data['title'], author=data['author'])
-    try:
-        db.session.add(new_book)
-        db.session.commit()
-        return jsonify(new_book.to_dict()), 201
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
-
-@app.route('/books/<int:book_id>', methods=['PUT'])
-def update_book(book_id):
-    book = Book.query.get_or_404(book_id)
-    data = request.get_json()
-    book.title = data.get('title', book.title)
-    book.author = data.get('author', book.author)
-    try:
-        db.session.commit()
-        return jsonify(book.to_dict())
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
-
-@app.route('/books/<int:book_id>', methods=['DELETE'])
-def delete_book(book_id):
-    book = Book.query.get_or_404(book_id)
-    try:
-        db.session.delete(book)
-        db.session.commit()
-        return '', 204
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+@app.route('/users', methods=['POST'])
+def add_user():
+    new_user = request.get_json()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO users (name, email) VALUES (%s, %s)',
+                   (new_user['name'], new_user['email']))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return '', 201
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0')
