@@ -1,220 +1,218 @@
-# Kubernetes deployment
+# Create a Flask REST API, connect it to MySQL, and deploy the entire setup using Docker
 
-### Step 1: Install Minikube and Kubectl
+## Step 1: Set Up Flask REST API
 
-1. **Install Minikube**
-   - Follow the [official installation guide](https://minikube.sigs.k8s.io/docs/start/) to install Minikube on your operating system.
+1. **Create a project directory**
+    ```bash
+    mkdir flask_mysql_docker
+    cd flask_mysql_docker
+    ```
 
-2. **Install Kubectl**
-   - Follow the [official installation guide](https://kubernetes.io/docs/tasks/tools/install-kubectl/) to install `kubectl`, the command-line tool for Kubernetes.
+2. **Create a virtual environment and activate it**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
 
-### Step 2: Start Minikube
+3. **Install Flask and MySQL connector**
+    ```bash
+    pip install Flask mysql-connector-python
+    ```
 
-Start Minikube with the desired driver (e.g., `docker`):
+4. **Create the Flask application**
 
-```bash
-minikube start --driver=docker
-```
+    Create a file named `app.py` with the following content:
+    
+    ```python
+    from flask import Flask, jsonify, request
+    import mysql.connector
+    from mysql.connector import Error
 
-### Step 3: Create Docker Images
+    app = Flask(__name__)
 
-Since Minikube runs its own Docker daemon, you need to build your Docker images within the Minikube environment.
+    # Database connection
+    def get_db_connection():
+        return mysql.connector.connect(
+            host="db",  # service name defined in docker-compose.yml or K8s service name
+            port=3306,  # MySQL service port
+            user="root",
+            password="root",
+            database="test_db"
+        )
 
-1. **Set Docker environment to Minikube**
-   ```bash
-   eval $(minikube -p minikube docker-env)
-   ```
+    @app.route('/users', methods=['GET'])
+    def get_users():
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute('SELECT * FROM users')
+            users = cursor.fetchall()
+            return jsonify(users)
+        except Error as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
-2. **Build Docker images**
-   ```bash
-   docker-compose build
-   ```
+    @app.route('/users/<int:user_id>', methods=['GET'])
+    def get_user(user_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+            user = cursor.fetchone()
+            if user:
+                return jsonify(user)
+            else:
+                return jsonify({"error": "User not found"}), 404
+        except Error as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
-### Step 4: Create Kubernetes Manifests
+    @app.route('/users', methods=['POST'])
+    def add_user():
+        new_user = request.get_json()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO users (name, email) VALUES (%s, %s)',
+                          (new_user['name'], new_user['email']))
+            conn.commit()
+            return jsonify({"id": cursor.lastrowid}), 201
+        except Error as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
-Create Kubernetes YAML files for deployment and service configuration.
+    @app.route('/users/<int:user_id>', methods=['PUT'])
+    def update_user(user_id):
+        update_user = request.get_json()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET name = %s, email = %s WHERE id = %s',
+                          (update_user['name'], update_user['email'], user_id))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return jsonify({"error": "User not found"}), 404
+            return jsonify({"message": "User updated successfully"})
+        except Error as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
-1. **Create a directory for Kubernetes manifests**
-   ```bash
-   mkdir k8s
-   cd k8s
-   ```
+    @app.route('/users/<int:user_id>', methods=['DELETE'])
+    def delete_user(user_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM users WHERE id = %s', (user_id,))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return jsonify({"error": "User not found"}), 404
+            return jsonify({"message": "User deleted successfully"})
+        except Error as e:
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            conn.close()
 
-2. **Create MySQL Deployment and Service**
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0')    
+    ```
 
-   Create a file named `mysql-deployment.yml`:
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: mysql
-   spec:
-     selector:
-       matchLabels:
-         app: mysql
-     strategy:
-       type: Recreate
-     template:
-       metadata:
-         labels:
-           app: mysql
-       spec:
-         containers:
-         - image: mysql:5.7
-           name: mysql
-           env:
-           - name: MYSQL_ROOT_PASSWORD
-             value: root
-           - name: MYSQL_DATABASE
-             value: test_db
-           ports:
-           - containerPort: 3306
-             name: mysql
-           volumeMounts:
-           - name: mysql-persistent-storage
-             mountPath: /var/lib/mysql
-         volumes:
-         - name: mysql-persistent-storage
-           persistentVolumeClaim:
-             claimName: mysql-pv-claim
-   ---
-   apiVersion: v1
-   kind: Service
-   metadata:
-     name: mysql
-   spec:
-     ports:
-     - port: 3306
-     selector:
-       app: mysql
-   ```
+## Step 2: Set Up MySQL
 
-   Create a file named `mysql-pv.yml`:
-   ```yaml
-   apiVersion: v1
-   kind: PersistentVolume
-   metadata:
-     name: mysql-pv
-   spec:
-     capacity:
-       storage: 1Gi
-     accessModes:
-       - ReadWriteOnce
-     hostPath:
-       path: "/mnt/data"
-   ---
-   apiVersion: v1
-   kind: PersistentVolumeClaim
-   metadata:
-     name: mysql-pv-claim
-   spec:
-     resources:
-       requests:
-         storage: 1Gi
-     accessModes:
-       - ReadWriteOnce
-   ```
+1. **Create a database initialization script**
 
-3. **Create Flask Deployment and Service**
+    Create a file named `init_db.sql` with the following content:
+    ```sql
+    CREATE DATABASE IF NOT EXISTS test_db;
+    USE test_db;
 
-   Create a file named `flask-deployment.yml`:
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: flask-app
-   spec:
-     selector:
-       matchLabels:
-         app: flask-app
-     template:
-       metadata:
-         labels:
-           app: flask-app
-       spec:
-         containers:
-         - name: flask-app
-           image: flask_mysql_docker_web:latest
-           ports:
-           - containerPort: 5000
-           env:
-           - name: FLASK_ENV
-             value: development
-           - name: DB_HOST
-             value: mysql
-           - name: DB_USER
-             value: root
-           - name: DB_PASSWORD
-             value: root
-           - name: DB_NAME
-             value: test_db
-   ---
-   apiVersion: v1
-   kind: Service
-   metadata:
-     name: flask-app
-   spec:
-     type: NodePort
-     ports:
-     - port: 5000
-       nodePort: 30007
-     selector:
-       app: flask-app
-   ```
+    CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(50) NOT NULL,
+        email VARCHAR(50) NOT NULL
+    );
+    ```
 
-### Step 5: Apply Kubernetes Manifests
+## Step 3: Set Up Docker
 
-Apply the Kubernetes manifests to create the deployments and services.
+1. **Create a `Dockerfile` for the Flask application**
+    ```Dockerfile
+    # Use an official Python runtime as a parent image
+    FROM python:3.8-slim-buster
 
-1. **Apply Persistent Volume and MySQL Deployment**
-   ```bash
-   kubectl apply -f mysql-pv.yml
-   kubectl apply -f mysql-deployment.yml
-   ```
+    # Set the working directory in the container
+    WORKDIR /app
 
-2. **Apply Flask Deployment**
-   ```bash
-   kubectl apply -f flask-deployment.yml
-   ```
+    # Copy the current directory contents into the container at /app
+    COPY . /app
 
-### Step 6: Verify Deployment
+    # Install any needed packages specified in requirements.txt
+    RUN pip install --no-cache-dir Flask mysql-connector-python
 
-Check the status of your deployments and services.
+    # Make port 5000 available to the world outside this container
+    EXPOSE 5000
 
-1. **Get the list of pods**
-   ```bash
-   kubectl get pods
-   ```
+    # Define environment variable
+    ENV NAME World
 
-2. **Get the list of services**
-   ```bash
-   kubectl get services
-   ```
+    # Run app.py when the container launches
+    CMD ["python", "app.py"]
+    ```
 
-### Step 7: Access the Flask Application
+2. **Create a `docker-compose.yml` file**
+    ```yaml
+    version: '3.8'
 
-Since the Flask service is exposed as a `NodePort`, you can access it via the Minikube IP and the node port.
+    services:
+      db:
+        image: mysql:5.7
+        restart: always
+        environment:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test_db
+        volumes:
+          - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+        ports:
+          - "3307:3306"
 
-1. **Get Minikube IP**
-   ```bash
-   minikube ip
-   ```
+      web:
+        build: .
+        command: python app.py
+        volumes:
+          - .:/app
+        ports:
+          - "5000:5000"
+        depends_on:
+          - db
+    ```
 
-2. **Access the application**
-   Open your browser and navigate to `http://<minikube-ip>:30007`.
+## Step 4: Build and Run the Docker Containers
 
-### Step 8: Testing the API
+1. **Build and start the containers**
+    ```bash
+    docker-compose up --build
+    ```
 
-Use `curl` or Postman to test the API endpoints.
+## Step 5: Testing the API
+
+Once the containers are up and running, you can test the API using tools like `curl` or Postman.
 
 1. **Add a new user**
-   ```bash
-   curl -X POST -H "Content-Type: application/json" -d "{\"name\": \"John Doe\", \"email\": \"john@example.com\"}" http://<minikube-ip>:30007/users
-   ```
+    ```bash
+    curl -X POST -H "Content-Type: application/json" -d '{"name": "John Doe", "email": "john@example.com"}' http://localhost:5000/users
+    ```
 
 2. **Get all users**
-   ```bash
-   curl http://<minikube-ip>:30007/users
-   ```
+    ```bash
+    curl http://localhost:5000/users
+    ```
 
-By following these steps, you should be able to deploy your Flask application with MySQL to Kubernetes using Minikube.
+That's it! You now have a Flask REST API connected to a MySQL database, all running inside Docker containers.
