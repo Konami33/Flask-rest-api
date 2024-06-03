@@ -6,6 +6,8 @@ services:
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: newuser
+      MYSQL_PASSWORD: newpass
       MYSQL_DATABASE: test_db
     volumes:
       - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql

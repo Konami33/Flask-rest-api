@@ -40,6 +40,7 @@ These SQL commands are executed within the MySQL client to:
 4.1 Create a virtual environment and install the necessary packages:
 
 ```bash
+sudo apt install python3.10-venv
 python3 -m venv venv
 source venv/bin/activate
 pip install flask mysql-connector-python
