@@ -15,7 +15,7 @@ Replace `root` with your desired root password.
 ### 2. Access MySQL Server in Docker Container
 
 ```bash
-sudo docker exec -it mysql-container mysql -u root -p root
+sudo docker exec -it mysql-container mysql -u root -proot
 ```
 
 This command runs the MySQL client inside the Docker container named `mysql-container`, logging in as the `root` user with the password `root`.
@@ -213,7 +213,7 @@ These commands update the package lists for upgrades and new package installatio
 Create the  `mydatabase`  and Verify Database Creation. Grant Permissions to the New User (if not already done).
 
 ```bash
-mysql -h 127.0.0.1 -u root -p root
+mysql -h 127.0.0.1 -u root -proot
 ```
 
 ```sql
@@ -245,7 +245,7 @@ To perform api endpoints we have to create a `user` table in the `mydatabase`
 9.1 First we have to exec into the mysql container
 
 ```bash
-sudo docker exec -it mysql-container mysql -u root -p root
+sudo docker exec -it mysql-container mysql -u root -proot
 ```
 
 9.2 Use the database
