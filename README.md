@@ -22,6 +22,7 @@ This documentation demonstrates how to create a Flask REST API that connects to 
 
 2. **Create a virtual environment and activate it**
     ```bash
+    sudo apt-get update
     sudo apt install python3.10-venv
     python3 -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`

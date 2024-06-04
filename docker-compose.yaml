@@ -12,7 +12,7 @@ services:
     volumes:
       - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     ports:
-      - "3307:3306"  # Changed the host port to 3307
+      - "3306:3306"  # Changed the host port to 3307
 
   web:
     build: .
