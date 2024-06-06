@@ -13,12 +13,10 @@ spec:
     spec:
       containers:
       - name: flask-app
-        image: konami98/flaskrestapi-web:latest
+        image: 
         ports:
         - containerPort: 5000
         env:
-        - name: FLASK_ENV
-          value: development
         - name: DB_HOST
           value: mysql
         - name: DB_USER

@@ -4,29 +4,30 @@ from mysql.connector import Error
 
 app = Flask(__name__)
 
-# Database connection
+# Database connection and table creation
 def get_db_connection():
-    connection = None
-    try:
-        connection = mysql.connector.connect(
-            host="localhost",
-            user="newuser",
-            password="newpassword",
-            database="mydatabase"
-        )
-        if connection.is_connected():
-            print("Connected to MySQL database")
-    except Error as e:
-        print(f"The error '{e}' occurred")
-    return connection
+    conn = mysql.connector.connect(
+        host="db",
+        port=3306,
+        user="root",
+        password="root",
+        database="test_db"
+    )
 
-    # return mysql.connector.connect(
-    #     host="db",  # service name defined in docker-compose.yml or K8s service name
-    #     port=3306,  # MySQL service port
-    #     user="root",
-    #     password="root",
-    #     database="test_db"
-    # )
+    cursor = conn.cursor()
+
+    # Create users table if it doesn't exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL
+        )
+    """)
+
+    conn.commit()
+
+    return conn
 
 @app.route('/')
 def index():
@@ -35,7 +36,6 @@ def index():
         return jsonify(message="Connected to MySQL database")
     else:
         return jsonify(message="Failed to connect to MySQL database"), 500
-
 
 @app.route('/users', methods=['GET'])
 def get_users():
@@ -120,7 +120,3 @@ def delete_user(user_id):
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-
-# curl -X POST -H "Content-Type: application/json" -d '{"name": "hithard", "email": "hithard@example.com"}' http://localhost:5000/users

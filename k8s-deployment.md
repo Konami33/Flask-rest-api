@@ -1,10 +1,8 @@
-# Kubernetes deployment
+# Deploy flask rest api into Kubernetes
 
-## Step 1: Create Kubernetes Manifests
+## Step 1: Create Kubernetes YAML files for deployment and service configuration for MySQL.
 
-Create Kubernetes YAML files for deployment and service configuration.
-
-1. **Create a directory for Kubernetes manifests**
+1. **Create a directory for Kubernetes manifests(Optional)**
    ```bash
    mkdir k8s
    cd k8s
@@ -85,85 +83,248 @@ Create Kubernetes YAML files for deployment and service configuration.
        - ReadWriteOnce
    ```
 
-3. **Create Flask Deployment and Service**
+3. Apply the Kubernetes manifests to create the deployments and services.
 
-   Create a file named `flask-deployment.yml`:
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: flask-app
-   spec:
-     selector:
-       matchLabels:
-         app: flask-app
-     template:
-       metadata:
-         labels:
-           app: flask-app
-       spec:
-         containers:
-         - name: flask-app
-           image: konami98/flaskrestapi-web:v1
-           ports:
-           - containerPort: 5000
-           env:
-           - name: FLASK_ENV
-             value: development
-           - name: DB_HOST
-             value: mysql
-           - name: DB_USER
-             value: root
-           - name: DB_PASSWORD
-             value: root
-           - name: DB_NAME
-             value: test_db
-   ---
-   apiVersion: v1
-   kind: Service
-   metadata:
-     name: flask-app
-   spec:
-     type: NodePort
-     ports:
-     - port: 5000
-       nodePort: 30007
-     selector:
-       app: flask-app
+    ```bash
+    kubectl apply -f mysql-pv.yml
+    kubectl apply -f mysql-deployment.yml
+    ```
+
+## Step 02: Deploy an ubuntu container
+
+1. Create a YAML file named `deployment.yaml` file using the official Ubuntu image:
+
+    ```yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: ubuntu-deployment
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: ubuntu
+      template:
+        metadata:
+          labels:
+            app: ubuntu
+        spec:
+          containers:
+          - name: ubuntu-container
+            image: ubuntu:latest
+            command: ["/bin/bash", "-c", "--"]
+            args: ["while true; do echo hello; sleep 10;done;"]
+    ```
+
+2. **Apply the YAML File**: Use `kubectl` to apply the deployment.
+
+    ```sh
+    kubectl apply -f deployment.yaml
+    ```
+
+### Step 3: Verify the Deployment
+
+1. **Check Pods**: Verify that the pod is running.
+
+    ```sh
+    kubectl get pods
+    ```
+
+2. **Describe the Pod**: Get detailed information about the pod.
+
+    ```sh
+    kubectl describe pod <pod-name>
+    ```
+
+### Explanation
+
+- **apiVersion**: Specifies the API version.
+- **kind**: Specifies the type of Kubernetes object (Deployment).
+- **metadata**: Contains metadata for the deployment, like its name.
+- **spec**: Defines the specification of the deployment.
+  - **replicas**: Number of pod replicas to run.
+  - **selector**: Selector to match the pods managed by the deployment.
+  - **template**: Defines the pod template.
+    - **metadata**: Contains metadata for the pod.
+    - **spec**: Defines the specification of the pod.
+      - **containers**: Lists the containers in the pod.
+        - **name**: Name of the container.
+        - **image**: Docker image to use (official Ubuntu image in this case).
+        - **command** and **args**: Specify the command to run inside the container. This example runs a simple bash loop to keep the container running.
+
+![](./image/1.png)
+
+## Step 03: Access MySQl from the ubuntu container
+
+1. Check all the services and pods are running
+
+  ```bash
+  kubectl get pods
+  kubectl get svc
+  ```
+2. Now get the ubuntu pod name and access the Ubuntu Container:
+
+  ```sh
+  kubectl exec -it <ubuntu-pod-name> -- /bin/bash
+  ```
+  ![](./image/2.png)
+
+3. To telnet to the MySQL server from Ubuntu, you can use the `telnet` command along with the MySQL server's hostname or IP address and port number. However, connecting to MySQL using telnet is not `secure` and `not recommended` for production environments because it transmits data `in plain text`. Instead, it's better to use the `MySQL client` over a secure connection. If you still want to use telnet for **testing or debugging** purposes, here's how you can do it:
+
+- **Install Telnet Client** (if not already installed):
+
+   If the telnet client is not installed on your Ubuntu system, you can install it using the following command:
+
+   ```sh
+   sudo apt-get update
+   sudo apt-get install telnet
    ```
 
-### Step 5: Apply Kubernetes Manifests
+- **Telnet to MySQL Server**:
 
-Apply the Kubernetes manifests to create the deployments and services.
+  Once the telnet client is installed, you can use it to connect to the MySQL server.
 
-1. **Apply Persistent Volume and MySQL Deployment**
-   ```bash
-   kubectl apply -f mysql-pv.yml
-   kubectl apply -f mysql-deployment.yml
-   ```
+  ```sh
+  telnet <mysql-server-host> <mysql-server-port>
+  ```
+  Replace `<mysql-server-host>` with the hostname or IP address of your MySQL server and `<mysql-server-port>` with the port number (usually 3306 for MySQL).
 
-2. **Apply Flask Deployment**
+  In our case:
+
+  ```sh
+  telnet mysql 3306
+  ```
+
+  ![](./image/3.png)
+
+   This command will attempt to establish a telnet connection to the MySQL server. If successful, you'll see a blank screen, indicating that the connection is established.
+
+- **Quit Telnet Session**:
+
+   To quit the telnet session, you can press `Ctrl+]` to enter telnet command mode, then type `quit` and press Enter.
+  
+3. Install MySQL Client:
+
+  Once inside the Ubuntu container, install the MySQL client:
+
+  ```sh
+  apt-get update
+  apt-get install -y mysql-client
+  ```
+4. Connect to MySQL:
+
+  Use the MySQL client to connect to the MySQL service as a root user:
+
+  ```sh
+  mysql -h mysql -u root -p<password>
+  ```
+  Replace <password> with your MySQL root password.
+
+  ![](./image/4.png)
+
+5. Create a new user in MySQL:
+
+  Create a new user in MySQL using the following command:
+
+  ```sql
+  CREATE USER 'newuser'@'%' IDENTIFIED BY 'newpassword';
+  GRANT ALL PRIVILEGES ON test_db.* TO 'newuser'@'%';
+  FLUSH PRIVILEGES;
+  ```
+  Replace `newuser` and `newpassword` with the desired username and password.
+
+6. Exit from the MySQL client and again access into the MySQL using the newly created user and password
+
+  ```sh
+  exit
+  mysql -h mysql -u newuser -pnewpassword
+  ```
+  Here, we used the newly create user and password to acces into the MySQL database
+
+7. We can also check the current user:
+
+  ```sql
+  SELECT CURRENT_USER();
+  ```
+
+  ![](./image/5.png)
+
+
+
+
+
+# *ISSUE with image. Need to solve...Connection refused!!*
+
+## Step 04: Create Flask Deployment and Service
+
+1. Create a file named `flask-deployment.yml`:
+
+    ```yaml
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: flask-app
+    spec:
+      selector:
+        matchLabels:
+          app: flask-app
+      template:
+        metadata:
+          labels:
+            app: flask-app
+        spec:
+          containers:
+          - name: flask-app
+            image: konami98/flaskrestapi-web:v3
+            ports:
+            - containerPort: 5000
+            env:
+            - name: DB_HOST
+              value: mysql
+            - name: DB_USER
+              value: root
+            - name: DB_PASSWORD
+              value: root
+            - name: DB_NAME
+              value: test_db
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: flask-app
+    spec:
+      type: NodePort
+      ports:
+      - port: 5000
+        nodePort: 30007
+      selector:
+        app: flask-app
+    ```
+
+2. Apply the Kubernetes manifests to create the deployments and services.
+
+- **Apply Flask Deployment**
    ```bash
    kubectl apply -f flask-deployment.yml
    ```
 
-### Step 6: Verify Deployment
+3. Verify Deployment
 
 Check the status of your deployments and services.
 
-1. **Get the list of pods**
+- **Get the list of pods**
    ```bash
    kubectl get pods
    ```
 
-2. **Get the list of services**
+- **Get the list of services**
    ```bash
    kubectl get services
    ```
 
-### Step 7: Access the Flask Application
+## Step 5: Access the Flask Application
 
-Since the Flask service is exposed as a `NodePort`, you can access it via the `NodeIP` and the node port. Here, the node port is `30007`
+Since the Flask service is exposed as a `NodePort`, we can access it via the `NodeIP` and the node port. Here, the node port is `30007`
 
 1. **Get NodeIP**
    ```bash
@@ -206,4 +367,4 @@ Use `curl` or `Postman` to test the API endpoints. In the terminal we are using 
   curl -X DELETE http://<NodeIP>:30007/users/1
   ```
 
-By following these steps, we can deploy our Flask application with MySQL to Kubernetes.
+Thats it!. By these steps, we have deployed our Flask application with MySQL to kubernetes.
